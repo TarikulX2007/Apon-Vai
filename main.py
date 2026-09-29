@@ -7,8 +7,6 @@ import sys
 import html
 import time
 import requests
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 from typing import Tuple
 
@@ -30,11 +28,11 @@ except Exception:
     pass
 
 # Config
-BOT_TOKEN = "8807512141:AAFep2LBQJzQ-4MnySBlIAXRYp-Rd3axssU"
+BOT_TOKEN = os.getenv("CHECKER_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 API_BASE_URL = os.getenv("PROXY_CHECKER_API_BASE", "http://204.12.218.86:31957")
-MB_CHECKER_WEBSITE = ""
+MB_CHECKER_WEBSITE = "http://204.12.218.86:31957/"
 
-_init_token = BOT_TOKEN if (":" in BOT_TOKEN and "YOUR_BOT_TOKEN_HERE" not in BOT_TOKEN) else "123456:REPLACE_WITH_YOUR_BOT_TOKEN"
+_init_token = BOT_TOKEN if (":" in BOT_TOKEN and "YOUR_BOT_TOKEN_HERE" not in BOT_TOKEN) else "8807512141:AAFep2LBQJzQ-4MnySBlIAXRYp-Rd3axssU"
 bot = telebot.TeleBot(_init_token, parse_mode="HTML")
 user_last_query = {}
 
@@ -314,29 +312,6 @@ def handle_checker_callbacks(call: types.CallbackQuery):
             pass
         return
 
-class _HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
-        self.end_headers()
-        self.wfile.write(b"Bot is running")
-
-    def do_HEAD(self):
-        self.send_response(200)
-        self.end_headers()
-
-    def log_message(self, *args):
-        pass
-
-
-def start_health_server():
-    """Bind to Render's PORT so the web service is detected as live."""
-    port = int(os.environ.get("PORT", "10000"))
-    server = HTTPServer(("0.0.0.0", port), _HealthHandler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    print(f"[OK] Health server listening on port {port}", flush=True)
-
-
 def run():
     print("=" * 75, flush=True)
     print("   [+] 2-in-1 Proxy Balance Checker Bot Starting...", flush=True)
@@ -356,7 +331,6 @@ def run():
     except Exception as e:
         print(f"[!] Warning connecting to Telegram getMe: {e}", flush=True)
 
-    start_health_server()
     print("[RUN] Starting polling loop...", flush=True)
     while True:
         try:
