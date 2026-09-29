@@ -28,12 +28,11 @@ except Exception:
     pass
 
 # Config
-BOT_TOKEN = os.getenv("CHECKER_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
-API_BASE_URL = os.getenv("PROXY_CHECKER_API_BASE", "http://204.12.218.86:31957")
+BOT_TOKEN = "8807512141:AAFep2LBQJzQ-4MnySBlIAXRYp-Rd3axssU"
+API_BASE_URL = "http://204.12.218.86:31957"
 MB_CHECKER_WEBSITE = "http://204.12.218.86:31957/"
 
-_init_token = BOT_TOKEN if (":" in BOT_TOKEN and "YOUR_BOT_TOKEN_HERE" not in BOT_TOKEN) else "8807512141:AAFep2LBQJzQ-4MnySBlIAXRYp-Rd3axssU"
-bot = telebot.TeleBot(_init_token, parse_mode="HTML")
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 user_last_query = {}
 
 # Custom Premium Emojis
@@ -318,12 +317,6 @@ def run():
     print(f"   API Gateway Base URL: {API_BASE_URL}", flush=True)
     print(f"   MB Checker Website:   {MB_CHECKER_WEBSITE}", flush=True)
     print("=" * 75, flush=True)
-
-    if "YOUR_BOT_TOKEN_HERE" in BOT_TOKEN or "REPLACE_WITH_YOUR_BOT_TOKEN" in BOT_TOKEN or ":" not in BOT_TOKEN:
-        print("[!] ERROR: Set your bot token in BOT_TOKEN or CHECKER_BOT_TOKEN environment variable.", flush=True)
-        print("    Example: export CHECKER_BOT_TOKEN='123456:ABC-DEF...'", flush=True)
-        print("    Or edit BOT_TOKEN = 'YOUR_ACTUAL_TOKEN' directly in the script.", flush=True)
-        sys.exit(1)
 
     try:
         me = bot.get_me()
