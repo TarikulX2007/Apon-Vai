@@ -7,6 +7,8 @@ import sys
 import html
 import time
 import requests
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime
 from typing import Tuple
 
@@ -311,7 +313,29 @@ def handle_checker_callbacks(call: types.CallbackQuery):
             pass
         return
 
+class _HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Bot is running")
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
+    def log_message(self, *args):
+        pass
+
+def start_health_server():
+    """Tiny web server so Render detects an open port."""
+    port = int(os.environ.get("PORT", "10000"))
+    server = HTTPServer(("0.0.0.0", port), _HealthHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    print(f"[OK] Health server listening on port {port}", flush=True)
+
 def run():
+    start_health_server()
     print("=" * 75, flush=True)
     print("   [+] 2-in-1 Proxy Balance Checker Bot Starting...", flush=True)
     print(f"   API Gateway Base URL: {API_BASE_URL}", flush=True)
@@ -323,6 +347,11 @@ def run():
         print(f"[OK] Bot connected successfully: @{me.username} (ID: {me.id})", flush=True)
     except Exception as e:
         print(f"[!] Warning connecting to Telegram getMe: {e}", flush=True)
+
+    try:
+        bot.remove_webhook()
+    except Exception as e:
+        print(f"[!] remove_webhook warning: {e}", flush=True)
 
     print("[RUN] Starting polling loop...", flush=True)
     while True:
