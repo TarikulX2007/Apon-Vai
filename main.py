@@ -404,7 +404,29 @@ def handle_checker_callbacks(call: types.CallbackQuery):
             pass
         return
 
+def start_health_server():
+    """Tiny HTTP server so Render (Web Service) detects an open port."""
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"Bot is running")
+        def do_HEAD(self):
+            self.send_response(200)
+            self.end_headers()
+        def log_message(self, *args):
+            pass
+
+    port = int(os.getenv("PORT", "10000"))
+    server = HTTPServer(("0.0.0.0", port), _Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    print(f"[OK] Health server listening on port {port}", flush=True)
+
 def run():
+    start_health_server()
     print("=" * 75, flush=True)
     print("   [+] 2-in-1 Proxy Balance Checker Bot Starting...", flush=True)
     print(f"   API Gateway Base URL: {API_BASE_URL}", flush=True)
@@ -416,6 +438,11 @@ def run():
         print(f"[OK] Bot connected successfully: @{me.username} (ID: {me.id})", flush=True)
     except Exception as e:
         print(f"[!] Warning connecting to Telegram getMe: {e}", flush=True)
+
+    try:
+        bot.remove_webhook()
+    except Exception:
+        pass
 
     print("[RUN] Starting polling loop...", flush=True)
     while True:
