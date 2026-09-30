@@ -295,7 +295,6 @@ def get_prompt_text_and_kb() -> Tuple[str, types.InlineKeyboardMarkup]:
         f"{PE['dot']} <b>User:Pass:</b>  <code>username:password</code>\n"
         f"{PE['dot']} <b>Port:User:Pass:</b> <code>port:username:password</code>\n"
         f"{PE['dot']} <b>Host:Port:User:</b> <code>host:port:username</code>\n\n"
-        f"{PE['globe']} <b>MB checker website:</b> {MB_CHECKER_WEBSITE}\n\n"
         "<i>/cancel to abort</i>"
     )
     markup = types.InlineKeyboardMarkup()
