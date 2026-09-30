@@ -4,11 +4,11 @@
 
 import os
 import sys
-import html
 import time
+import html
 import requests
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 from datetime import datetime
 from typing import Tuple
 
@@ -19,6 +19,18 @@ except ImportError:
     os.system(f"{sys.executable} -m pip install pyTelegramBotAPI requests")
     import telebot
     from telebot import types
+
+# Robust HTTP session with connection pooling and transient auto-retry
+_session = requests.Session()
+_retries = Retry(
+    total=2,
+    backoff_factor=0.5,
+    status_forcelist=[502, 503, 504],
+    raise_on_status=False
+)
+_adapter = HTTPAdapter(max_retries=_retries, pool_connections=20, pool_maxsize=50)
+_session.mount("http://", _adapter)
+_session.mount("https://", _adapter)
 
 # UTF-8 console setup
 try:
@@ -31,7 +43,7 @@ except Exception:
 
 # Config
 BOT_TOKEN = "8807512141:AAFep2LBQJzQ-4MnySBlIAXRYp-Rd3axssU"
-API_BASE_URL = "http://204.12.218.86:31957"
+API_BASE_URL = os.getenv("PROXY_CHECKER_API_BASE", "http://204.12.218.86:31957")
 MB_CHECKER_WEBSITE = "http://204.12.218.86:31957/"
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
@@ -94,6 +106,50 @@ _RENDER_MAP = {
     "•": ("5352638632278660622", "•"),
 }
 
+# ---------------- Colored (styled) inline buttons ----------------
+import threading
+_style_state = threading.local()
+
+_BTN_STYLES = {
+    # callback_data: (style, premium icon emoji id)
+    "chk_refresh": ("success", "6012661228910939253"),  # green + refresh
+    "chk_another": ("primary", "5463352748751753567"),  # blue + search
+    "chk_close":   ("danger",  "5420130255174145507"),  # red + cross
+}
+
+class _StyledInlineButton(types.InlineKeyboardButton):
+    """Inline button with color + premium icon. Falls back to plain if styles are switched off."""
+    _extra = None
+    def to_dict(self):
+        d = super().to_dict()
+        if getattr(_style_state, "off", False) or not self._extra:
+            return d
+        d["style"], d["icon_custom_emoji_id"] = self._extra
+        return d
+
+def IB(text: str, callback_data: str) -> types.InlineKeyboardButton:
+    btn = _StyledInlineButton(text, callback_data=callback_data)
+    btn._extra = _BTN_STYLES.get(callback_data)
+    return btn
+
+def _safe_wrap(fn):
+    """If Telegram rejects the colored buttons, retry once with plain buttons so the checker never breaks."""
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            if "not modified" in str(e).lower() or not kwargs.get("reply_markup") and len(args) < 5:
+                raise
+            _style_state.off = True
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                _style_state.off = False
+    return wrapper
+
+bot.send_message = _safe_wrap(bot.send_message)
+bot.edit_message_text = _safe_wrap(bot.edit_message_text)
+
 def R(text: str) -> str:
     """Replaces raw unicode emojis with custom premium emoji tags."""
     for em, (eid, fb) in _RENDER_MAP.items():
@@ -114,7 +170,7 @@ def format_proxy_check_view(query: str) -> Tuple[str, bool, types.InlineKeyboard
     api_url = f"{API_BASE_URL}/api/check"
 
     try:
-        resp = requests.get(api_url, params={"query": query}, timeout=12)
+        resp = _session.get(api_url, params={"query": query}, timeout=30)
         data = resp.json()
     except Exception as exc:
         err_txt = (
@@ -125,8 +181,8 @@ def format_proxy_check_view(query: str) -> Tuple[str, bool, types.InlineKeyboard
         )
         markup = types.InlineKeyboardMarkup(row_width=2)
         markup.add(
-            types.InlineKeyboardButton("Try Again", callback_data="chk_another"),
-            types.InlineKeyboardButton("Close", callback_data="chk_close")
+            IB("Try Again", callback_data="chk_another"),
+            IB("Close", callback_data="chk_close")
         )
         return err_txt, False, markup
 
@@ -159,15 +215,15 @@ def format_proxy_check_view(query: str) -> Tuple[str, bool, types.InlineKeyboard
             f"[{bar}]  {pct}% remaining\n\n"
             f"{PE['pin']} <b>Status:</b> {status_tag}\n"
             f"{PE['calendar']} <b>Checked at:</b> {checked_at}\n\n"
-            f"{PE['globe']} <b>MB checker website:</b> {MB_CHECKER_WEBSITE}"
+    #        f"{PE['globe']} <b>MB checker website:</b> {MB_CHECKER_WEBSITE}"
         )
 
         markup = types.InlineKeyboardMarkup(row_width=2)
         markup.add(
-            types.InlineKeyboardButton("Refresh", callback_data="chk_refresh"),
-            types.InlineKeyboardButton("Check Another", callback_data="chk_another")
+            IB("Refresh", callback_data="chk_refresh"),
+            IB("Check Another", callback_data="chk_another")
         )
-        markup.add(types.InlineKeyboardButton("Close", callback_data="chk_close"))
+        markup.add(IB("Close", callback_data="chk_close"))
 
         return msg, True, markup
     else:
@@ -181,8 +237,8 @@ def format_proxy_check_view(query: str) -> Tuple[str, bool, types.InlineKeyboard
         )
         markup = types.InlineKeyboardMarkup(row_width=2)
         markup.add(
-            types.InlineKeyboardButton("Check Another", callback_data="chk_another"),
-            types.InlineKeyboardButton("Close", callback_data="chk_close")
+            IB("Check Another", callback_data="chk_another"),
+            IB("Close", callback_data="chk_close")
         )
         return msg, False, markup
 
@@ -191,7 +247,7 @@ def format_bulk_check_view(lines: list) -> Tuple[str, types.InlineKeyboardMarkup
     bulk_url = f"{API_BASE_URL}/api/check/bulk"
     try:
         cleaned_queries = [clean_proxy_input(l) for l in lines[:100]]
-        resp = requests.post(bulk_url, json={"queries": cleaned_queries}, timeout=25).json()
+        resp = _session.post(bulk_url, json={"queries": cleaned_queries}, timeout=45).json()
         if resp.get("status") == "success":
             msg = (
                 f"{PE['bolt']} <b>BULK PROXY REPORT</b>\n"
@@ -222,8 +278,8 @@ def format_bulk_check_view(lines: list) -> Tuple[str, types.InlineKeyboardMarkup
 
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
-        types.InlineKeyboardButton("Check Another", callback_data="chk_another"),
-        types.InlineKeyboardButton("Close", callback_data="chk_close")
+        IB("Check Another", callback_data="chk_another"),
+        IB("Close", callback_data="chk_close")
     )
     return msg, markup
 
@@ -235,17 +291,52 @@ def get_prompt_text_and_kb() -> Tuple[str, types.InlineKeyboardMarkup]:
         "Send your full proxy or username (OWL Proxy or IP Cook):\n\n"
         f"{PE['dot']} <b>Full Proxy:</b> <code>host:port:username:password</code>\n"
         f"{PE['dot']} <b>Username:</b>   <code>username</code>\n"
+        f"{PE['dot']} <b>Port:User:</b>  <code>port:username</code>\n"
         f"{PE['dot']} <b>User:Pass:</b>  <code>username:password</code>\n"
-        f"{PE['dot']} <b>Port:User:</b>  <code>port:username:password</code>\n\n"
+        f"{PE['dot']} <b>Port:User:Pass:</b> <code>port:username:password</code>\n"
+        f"{PE['dot']} <b>Host:Port:User:</b> <code>host:port:username</code>\n\n"
         f"{PE['globe']} <b>MB checker website:</b> {MB_CHECKER_WEBSITE}\n\n"
         "<i>/cancel to abort</i>"
     )
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("Cancel", callback_data="chk_close"))
+    markup.add(IB("Cancel", callback_data="chk_close"))
     return txt, markup
 
-@bot.message_handler(commands=["start", "check"])
+# ---------------- Blue "CHECK PROXY MB" keyboard button ----------------
+MAIN_BTN_TEXT = "CHECK PROXY MB"
+MAIN_BTN_ICON_ID = "5463352748751753567"  # premium search emoji
+
+class _StyledKeyboardButton(types.KeyboardButton):
+    """KeyboardButton with blue style + premium emoji icon (works on any telebot version)."""
+    def to_dict(self):
+        d = super().to_dict()
+        d["style"] = "primary"                      # blue button
+        d["icon_custom_emoji_id"] = MAIN_BTN_ICON_ID  # premium search emoji before text
+        return d
+
+def get_main_keyboard(styled: bool = True) -> types.ReplyKeyboardMarkup:
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True)
+    if styled:
+        kb.add(_StyledKeyboardButton(MAIN_BTN_TEXT))
+    else:
+        kb.add(types.KeyboardButton("\U0001F50D " + MAIN_BTN_TEXT))  # plain fallback
+    return kb
+
+@bot.message_handler(commands=["start"])
+def handle_start_cmd(message: types.Message):
+    welcome = f"{PE['search']} <b>Welcome!</b>\nTap the button below to check your proxy balance."
+    try:
+        bot.send_message(message.chat.id, welcome, reply_markup=get_main_keyboard(True))
+    except Exception:
+        bot.send_message(message.chat.id, welcome, reply_markup=get_main_keyboard(False))
+
+@bot.message_handler(commands=["check"])
 def handle_start(message: types.Message):
+    text, markup = get_prompt_text_and_kb()
+    bot.send_message(message.chat.id, text, reply_markup=markup)
+
+@bot.message_handler(func=lambda m: bool(m.text) and MAIN_BTN_TEXT in m.text.upper())
+def handle_main_button(message: types.Message):
     text, markup = get_prompt_text_and_kb()
     bot.send_message(message.chat.id, text, reply_markup=markup)
 
@@ -313,29 +404,7 @@ def handle_checker_callbacks(call: types.CallbackQuery):
             pass
         return
 
-class _HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
-        self.end_headers()
-        self.wfile.write(b"Bot is running")
-
-    def do_HEAD(self):
-        self.send_response(200)
-        self.end_headers()
-
-    def log_message(self, *args):
-        pass
-
-def start_health_server():
-    """Tiny web server so Render detects an open port."""
-    port = int(os.environ.get("PORT", "10000"))
-    server = HTTPServer(("0.0.0.0", port), _HealthHandler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    print(f"[OK] Health server listening on port {port}", flush=True)
-
 def run():
-    start_health_server()
     print("=" * 75, flush=True)
     print("   [+] 2-in-1 Proxy Balance Checker Bot Starting...", flush=True)
     print(f"   API Gateway Base URL: {API_BASE_URL}", flush=True)
@@ -347,11 +416,6 @@ def run():
         print(f"[OK] Bot connected successfully: @{me.username} (ID: {me.id})", flush=True)
     except Exception as e:
         print(f"[!] Warning connecting to Telegram getMe: {e}", flush=True)
-
-    try:
-        bot.remove_webhook()
-    except Exception as e:
-        print(f"[!] remove_webhook warning: {e}", flush=True)
 
     print("[RUN] Starting polling loop...", flush=True)
     while True:
