@@ -232,8 +232,6 @@ def format_proxy_check_view(query: str) -> Tuple[str, bool, types.InlineKeyboard
             f"{PE['no']} <b>PROXY CHECK FAILED</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"{PE['warn']} <b>{html.escape(err_msg)}</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"{PE['globe']} <b>MB checker website:</b> {MB_CHECKER_WEBSITE}"
         )
         markup = types.InlineKeyboardMarkup(row_width=2)
         markup.add(
@@ -257,23 +255,18 @@ def format_bulk_check_view(lines: list) -> Tuple[str, types.InlineKeyboardMarkup
                 f"{PE['depleted']} <b>Depleted:</b> {resp.get('depleted_count', 0)}\n"
                 f"{PE['no']} <b>Not Found:</b> {resp.get('not_found_count', 0)}\n"
                 f"{PE['storage']} <b>Remaining Data:</b> <b>{resp.get('total_remaining_display', '0 MB')}</b>\n\n"
-                f"{PE['globe']} <b>MB checker website:</b> {MB_CHECKER_WEBSITE}"
             )
         else:
             msg = (
                 f"{PE['no']} <b>BULK CHECK FAILED</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"{PE['warn']} {html.escape(resp.get('message', 'Unknown bulk error'))}\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"{PE['globe']} <b>MB checker website:</b> {MB_CHECKER_WEBSITE}"
             )
     except Exception as exc:
         msg = (
             f"{PE['no']} <b>Bulk Gateway Offline</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"{PE['warn']} Error: <code>{html.escape(str(exc))}</code>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"{PE['globe']} <b>MB checker website:</b> {MB_CHECKER_WEBSITE}"
         )
 
     markup = types.InlineKeyboardMarkup(row_width=2)
@@ -295,7 +288,6 @@ def get_prompt_text_and_kb() -> Tuple[str, types.InlineKeyboardMarkup]:
         f"{PE['dot']} <b>User:Pass:</b>  <code>username:password</code>\n"
         f"{PE['dot']} <b>Port:User:Pass:</b> <code>port:username:password</code>\n"
         f"{PE['dot']} <b>Host:Port:User:</b> <code>host:port:username</code>\n\n"
-        "<i>/cancel to abort</i>"
     )
     markup = types.InlineKeyboardMarkup()
     markup.add(IB("Cancel", callback_data="chk_close"))
@@ -309,12 +301,12 @@ class _StyledKeyboardButton(types.KeyboardButton):
     """KeyboardButton with blue style + premium emoji icon (works on any telebot version)."""
     def to_dict(self):
         d = super().to_dict()
-        d["style"] = "primary"                      # blue button
+        d["style"] = "success"                      # green button
         d["icon_custom_emoji_id"] = MAIN_BTN_ICON_ID  # premium search emoji before text
         return d
 
 def get_main_keyboard(styled: bool = True) -> types.ReplyKeyboardMarkup:
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True)
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     if styled:
         kb.add(_StyledKeyboardButton(MAIN_BTN_TEXT))
     else:
